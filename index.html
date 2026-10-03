@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Calendar Stopwatch</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya+Sans:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0c1f3f;--blue:#1d4574;--blue2:#2b6bb0;--gold:#efe08f;--gold2:#a78f47;--parch:#d6cb9b;--parch2:#e9e1bd;--ink:#2a2314;--serif:'Cinzel',Georgia,serif;--sans:'Alegreya Sans',Georgia,serif}
+*{box-sizing:border-box}
+body{margin:0;height:100vh;padding:16px;background:radial-gradient(circle at 50% 30%,#17365f,#091831);font:500 19px var(--sans);color:var(--ink);display:flex}
+.frame{flex:1;min-height:0;position:relative;display:grid;grid-template-columns:1fr;padding:54px 28px 42px;border:2px solid var(--gold2);border-radius:14px;outline:1px solid var(--gold2);outline-offset:5px}
+.ribbon{position:absolute;top:-20px;left:50%;transform:translateX(-50%);padding:9px 80px;background:linear-gradient(#80692f,#4c3b19);border:2px solid var(--gold);border-radius:4px;font:800 24px var(--serif);letter-spacing:.05em;color:#f6efc9;white-space:nowrap}
+
+.btn{font:700 20px var(--sans);color:#f6efc9;background:var(--blue);border:2px solid var(--gold2);border-radius:7px;padding:11px 16px;text-align:left;cursor:pointer;text-decoration:none;display:inline-block}
+
+.btn:hover{filter:brightness(1.15)}
+#so{position:absolute;right:22px;bottom:8px;font:700 16px var(--sans);background:none;border:0;color:#9fb4d2;cursor:pointer;text-decoration:underline}
+main{background:var(--parch);border:3px solid var(--gold2);border-radius:10px;padding:26px 30px;overflow:auto;box-shadow:inset 0 0 0 4px var(--parch2)}
+h2{font:800 22px var(--serif);margin:0 0 10px}
+.row{display:flex;align-items:center;gap:14px;padding:11px 20px;margin-bottom:10px;background:var(--parch2);border:2px solid var(--gold2);border-radius:22px;cursor:pointer;font-weight:700}
+.row i{width:14px;height:14px;border-radius:50%;border:2px solid var(--ink)}
+.row span{flex:1}
+.gem{width:20px;height:20px;transform:rotate(45deg);border:2px solid var(--gold2);background:transparent}
+.row.sel{background:#f3ecc6;border-color:var(--blue);box-shadow:0 0 0 2px var(--gold)}
+.row.sel .gem{background:var(--blue2);border-color:var(--navy)}
+.sm{font-size:16px;opacity:.75}
+input,select,textarea{width:100%;margin-top:5px;padding:9px 12px;font:500 19px var(--sans);color:var(--ink);background:#f6f0d4;border:2px solid #8d7a3c;border-radius:8px}
+input:focus,select:focus,textarea:focus,button:focus-visible,.btn:focus-visible{outline:3px solid var(--blue2);outline-offset:1px}
+label{display:block;font-weight:700;margin-bottom:14px}
+.g3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px}
+.btns{display:flex;gap:14px;justify-content:flex-end;margin-top:6px}
+.btn.go{background:var(--blue2);border-color:var(--gold);color:#fff}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;min-height:100%;text-align:center}
+.center input,.center label{width:100%;max-width:480px}.center label{text-align:left;margin:0}.center input{text-align:center}
+.big{font-size:26px;padding:12px 56px}
+.digits{font:800 92px var(--serif);color:var(--navy);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.lbl{font:800 24px var(--serif)}
+#hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;color:#d9e2f0;font-size:18px}
+#toast{position:fixed;bottom:60px;left:50%;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:.25s;padding:10px 26px;background:var(--navy);color:var(--gold);border:2px solid var(--gold);border-radius:8px;font-weight:700;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.bad{color:#ffb4a8;border-color:#ffb4a8}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body>
+<div class="frame">
+  <div class="ribbon" id="title">Stopwatch</div>
+  <button id="so">Sign out</button>
+  <main id="main"></main>
+  <div id="hint"></div>
+</div>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),pad=n=>String(n).padStart(2,'0');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S={selected:[]},cals=[],iv;
+const api=async(p,b)=>{const r=await fetch(p,b===undefined?{}:{method:'POST',body:JSON.stringify(b)});const j=await r.json();if(j.error)throw new Error(j.error);return j};
+const dstr=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,tstr=d=>`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const hms=ms=>{const s=Math.floor(ms/1000);return `${pad(s/3600|0)}:${pad(s%3600/60|0)}:${pad(s%60)}`};
+function toast(m,bad){const t=$('#toast');t.textContent=m;t.className='show'+(bad?' bad':'');setTimeout(()=>t.className='',3500)}
+
+async function init(){
+  S=await api('/api/state');
+  if(S.signedIn&&S.configured){try{cals=await api('/api/calendars');cals.sort((a,b)=>b.primary-a.primary)}catch(e){toast('Could not load calendars',1);console.error(e)}}
+  render();
+}
+$('#so').onclick=async()=>{await api('/api/logout',{});S.signedIn=false;cals=[];render()};
+const calId=t=>[t&&t.cal,S.selected[0]].find(i=>cals.some(c=>c.id===i))||(cals[0]||{}).id;
+const calOpts=id=>cals.map(c=>`<option value="${esc(c.id)}"${c.id===id?' selected':''}>${esc(c.name)}</option>`).join('');
+async function remember(id){S.selected=[id];await api('/api/selection',{ids:[id]})}
+
+function render(){
+  clearInterval(iv);
+  $('#so').style.display=S.signedIn?'':'none';
+  const m=$('#main');
+  if(!S.configured){$('#hint').textContent='Add credentials.json to the app folder.';return m.innerHTML='<h2>One-time setup needed</h2><p>Put your Google <b>credentials.json</b> in the app folder, then restart. Steps are in SETUP.md.</p>'}
+  if(!S.signedIn){$('#hint').textContent='Your login stays on this Mac.';return m.innerHTML='<div class="center"><h2>Connect your Google account</h2><a class="btn go big" href="/api/login">Sign in with Google</a></div>'}
+  if(!cals.length){$('#hint').textContent='';return m.innerHTML='<h2>No calendars found</h2><p>This account has no calendars you can add events to.</p>'}
+  const t=S.timer;
+  if(!t){
+    $('#hint').textContent='Name it, pick a calendar, then start the clock.';
+    m.innerHTML=`<div class="center"><input id="nm" placeholder="What are you working on?"><label>Calendar<select id="cs">${calOpts(calId())}</select></label><button class="btn go big" id="go">Start</button></div>`;
+    $('#nm').focus();
+    const start=async()=>{const cal=$('#cs').value;await remember(cal);S.timer={name:$('#nm').value.trim(),start:Date.now(),cal};await api('/api/timer',S.timer);render()};
+    $('#go').onclick=start;$('#nm').onkeydown=e=>{if(e.key==='Enter')start()};return;
+  }
+  if(!t.stop){
+    $('#hint').textContent='Timer is running. It keeps going if you close the app.';
+    m.innerHTML=`<div class="center"><div class="lbl">${esc(t.name||'Untitled')}</div><div class="digits" id="dg"></div><label>Calendar<select id="cs">${calOpts(calId(t))}</select></label><div class="btns"><button class="btn" id="dis">Discard</button><button class="btn go" id="st">Stop</button></div></div>`;
+    const u=()=>$('#dg').textContent=hms(Date.now()-t.start);u();iv=setInterval(u,250);
+    $('#cs').onchange=async()=>{t.cal=$('#cs').value;await remember(t.cal);await api('/api/timer',t)};
+    $('#st').onclick=async()=>{t.stop=Date.now();await api('/api/timer',t);render()};
+    $('#dis').onclick=async()=>{if(confirm('Discard this timer?')){S.timer=null;await api('/api/timer',{});render()}};return;
+  }
+  eventForm(m,t);
+}
+
+function eventForm(m,t){
+  $('#hint').textContent='Review the details, then create the event.';
+  const s=new Date(t.start),dur=Math.max(1,Math.round((t.stop-t.start)/6e4));
+  m.innerHTML=`<div class="form"><label>Event name<input id="f-n" value="${esc(t.name||'')}"></label>
+  <label>Calendar<select id="f-c">${calOpts(calId(t))}</select></label>
+  <div class="g3"><label>Date<input type="date" id="f-d" value="${dstr(s)}"></label><label>Start<input type="time" id="f-s" value="${tstr(s)}"></label><label>End<input type="time" id="f-e" value=""></label></div>
+  <label>Duration (minutes)<input type="number" min="1" id="f-u" value="${dur}"></label>
+  <label>Details (optional)<textarea id="f-x" rows="2"></textarea></label>
+  <div class="btns"><button class="btn" id="cx">Cancel</button><button class="btn go" id="cr">Create</button></div></div>`;
+  const g=i=>$('#f-'+i),start=()=>new Date(g('d').value+'T'+g('s').value);
+  const fromDur=()=>{const st=start();if(!isNaN(st))g('e').value=tstr(new Date(st.getTime()+g('u').value*6e4))};
+  const fromEnd=()=>{let d=new Date(g('d').value+'T'+g('e').value)-start();if(d<=0)d+=864e5;g('u').value=Math.round(d/6e4)};
+  fromDur();g('e').oninput=fromEnd;g('s').oninput=g('d').oninput=g('u').oninput=fromDur;
+  $('#cx').onclick=async()=>{if(!confirm('Discard this time entry?'))return;S.timer=null;await api('/api/timer',{});render()};
+  $('#cr').onclick=async()=>{
+    const n=g('n').value.trim(),st=start();
+    if(!n)return toast('Give the event a name',1);
+    if(isNaN(st)||!(g('u').value>0))return toast('Check the date, time and duration',1);
+    const en=new Date(st.getTime()+g('u').value*6e4);
+    try{
+      await api('/api/events',{summary:n,description:g('x').value,calendarId:g('c').value,start:st.toISOString(),end:en.toISOString(),tz:Intl.DateTimeFormat().resolvedOptions().timeZone});
+      await remember(g('c').value);S.timer=null;await api('/api/timer',{});
+      render();toast('Event created');
+    }catch(x){toast('Could not create the event. Try signing in again.',1);console.error(x)}
+  };
+}
+init();
+</script></body></html>
